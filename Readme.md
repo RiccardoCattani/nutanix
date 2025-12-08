@@ -356,7 +356,7 @@ Anche se i dati sono locali, Nutanix garantisce la sicurezza:
 - **In una SAN tradizionale**: La VM deve sempre uscire dall'host, attraversare la rete (Fibre Channel/Ethernet) e raggiungere lo storage array esterno per ogni operazione di lettura/scrittura.
 - **In Nutanix**: Il dato è "a km 0", risiede dove serve. La rete viene usata principalmente per la replica di sicurezza, non per il traffico I/O primario.
 
-📌 16. COMPONENTI PRINCIPALI DEL CLUSTER NUTANIX
+📌 ## 16. COMPONENTI PRINCIPALI DEL CLUSTER NUTANIX ##
 
 Ora vogliamo capire quali sono i diversi componenti del cluster Nutanix. Ogni indagine ha una componente specifica che utilizziamo per gestire il nostro ambiente. L'elenco seguente vi aiuterà a capire come funzionano i componenti del cluster e a individuare rapidamente quale servizio è coinvolto in caso di problemi.
 Iniziamo con la semplice architettura di flusso: il browser (o un tool di orchestrazione) si connette all'ambiente Nutanix per inviare richieste o attività. 
@@ -390,21 +390,3 @@ Un rack (o server rack) è un armadio/struttura che ospita più blocchi o server
 - **Raffreddamento**: serve un sistema di cooling adeguato perché molti componenti in poco spazio generano calore.
 - **Unità rack (U)**: l’altezza si misura in “U” (1U = 1,75 pollici). Un blocco 1U usa una sola unità; un blocco 2U ne usa due, ecc.
 - **Capacità**: un rack da 16U può ospitare, ad esempio, 16 blocchi 1U oppure 8 blocchi 2U; la capacità varia per modello e marca.
-
-📌 19. COS’È UN BLOCCO
-
-Il blocco (chassis) è l’unità hardware che ospita uno o più nodi fisici. In Nutanix è chiamato “blocco”, ma il concetto vale anche per altri vendor (chassis/unità rack).
-
-- **Alloggiamento nodi**: a seconda del modello può contenere 1, 2, 3 o fino a 4 nodi; la densità dipende da formato (1U/2U) e modello.
-- **Frontale dischi**: espone gli slot per SSD/HDD con funzionalità hot-swap.
-- **Consumo di rack**: un blocco 1U occupa una sola unità nel rack; un blocco 2U ne occupa due.
-- **Vendor-agnostico**: puoi avere blocchi Nutanix NX o chassis di terze parti (HP, Dell, Lenovo, ecc.), purché certificati per HCI.
-
-📌 20. COS’È UN NODO
-
-Il nodo è il singolo server fisico all’interno del blocco, con CPU, RAM, dischi (SSD/HDD) frontali dedicati e le proprie interfacce di rete. I nodi non condividono dischi tra loro; ogni nodo usa i propri drive nel blocco.
-
-- **Densità per blocco**: in base al modello, un blocco può contenere 1, 2, 3 o 4 nodi (es. blocchi 1U/2U con layout multi-nodo).
-- **Componenti per nodo**: CPU, RAM, slot SSD/HDD con hot-swap, NIC proprie (tipicamente SFP+ 10GbE a 2 o 4 porte; possibili RJ45 1/10GbE). L’alimentazione può essere condivisa a livello di chassis, ma le risorse di calcolo e storage sono isolate per nodo.
-- **Indipendenza hardware**: ogni nodo ha il proprio backplane/riser, NIC e cablaggi; non accede ai dischi degli altri nodi.
-- **Varianti**: nodi densi (un nodo grande che occupa tutto il blocco) o layout multi-nodo in un unico blocco (fino a 4 nodi) a seconda del form factor.
