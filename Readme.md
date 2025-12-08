@@ -158,6 +158,7 @@ Il software di Nutanix (Acropolis) gestisce lo storage locale.
 Il cuore dell'architettura. La CVM è una VM dedicata su ogni host che sostituisce il controller hardware esterno.
 Distributed Storage Fabric: La CVM converte lo storage locale in un unico pool di storage logico distribuito a livello di cluster.
 Se non c'è CVM, non c'è HCI, ossia una infrastruttura iperconvergente (Hyper-Converged Infrastructure)
+
 È il concetto fondamentale su cui si basa Nutanix, in parole semplici:
 a) Tradizionale (Converged): Hai 3 silos separati che devi comprare, collegare e gestire separatamente:
   - Server (Compute)
@@ -167,7 +168,6 @@ b) Iperconvergente (HCI): Tutto è collassato dentro un unico box (il server).
 Non c'è più la SAN esterna.
 Lo storage è fatto dai dischi dentro i server.
 Il software (come la CVM di Nutanix) unisce tutto e lo fa sembrare un unico grande sistema.
-
 
 📌 7. IL CUORE DI NUTANIX: LA CVM (CONTROLLER VIRTUAL MACHINE)
 
@@ -196,15 +196,46 @@ aumenta resilienza e performance.
 📌 10. RESILIENZA E REPLICHE DEI DATI (RF2 / RF3)
 
 Nutanix gestisce la tolleranza ai guasti e l'alta disponibilità attraverso il concetto di Fattore di Replica (Replication Factor - RF). Questo garantisce che i dati siano sempre disponibili, anche in caso di guasti a dischi o nodi interi.
-RF2 (Fattore di Replica 2):
-Requisiti: Richiede un minimo di 3 nodi nel cluster.
-Funzionamento: Ogni blocco di dati viene replicato 2 volte (risultando in 3 copie totali: l'originale più due repliche).
-Tolleranza ai guasti: Permette la perdita contemporanea di un nodo o due dischi senza interruzioni di servizio.
-RF3 (Fattore di Replica 3):
-Requisiti: Richiede un minimo di 5 nodi nel cluster.
-Funzionamento: Ogni blocco di dati viene replicato 3 volte (risultando in 4 copie totali).
-Tolleranza ai guasti: Permette la perdita contemporanea di due nodi senza interruzioni di servizio, garantendo la massima resilienza.
-Questa replica è gestita a livello software dalla CVM e distribuita in modo intelligente su tutti i nodi, eliminando il singolo punto di guasto tipico delle architetture SAN.
+
+---
+### Cos’è il Fattore di Replica (RF)?
+Il Fattore di Replica (Replication Factor, RF) è il meccanismo con cui Nutanix garantisce che i dati siano sempre disponibili, anche in caso di guasti hardware (dischi o nodi). In pratica, ogni blocco di dati viene copiato più volte su nodi diversi del cluster.
+
+#### RF2 (Replication Factor 2)
+- **Minimo 3 nodi**: Serve almeno un cluster di 3 server fisici.
+- **Come funziona**: Ogni blocco di dati viene scritto sull’host principale e replicato su altri 2 nodi (totale 3 copie: 1 originale + 2 repliche). Per host principale si intende il nodo dove risiede la VM che sta scrivendo i dati.
+- **Tolleranza ai guasti**: Puoi perdere un intero nodo (server) oppure due dischi, e il sistema continua a funzionare senza perdere dati o interrompere i servizi.
+
+#### RF3 (Replication Factor 3)
+- **Minimo 5 nodi**: Serve almeno un cluster di 5 server fisici.
+- **Come funziona**: Ogni blocco di dati viene scritto sull’host principale e replicato su altri 3 nodi (totale 4 copie: 1 originale + 3 repliche).
+- **Tolleranza ai guasti**: Puoi perdere contemporaneamente due nodi (server) e il sistema continua a funzionare senza interruzioni.
+
+---
+#### Schema semplificato
+
+| RF | Minimo nodi | Copie totali | Nodi che puoi perdere |
+|----|-------------|--------------|-----------------------|
+| RF2| 3           | 3            | 1 nodo (o 2 dischi)   |
+| RF3| 5           | 4            | 2 nodi                |
+
+---
+#### Esempio pratico
+Supponiamo di avere un cluster Nutanix con 5 nodi e RF3:
+- Scrivi un file: viene salvato sul nodo A e replicato su B, C e D.
+- Se il nodo A e il nodo B si guastano, il file è ancora disponibile su C e D.
+
+---
+### Come avviene la replica?
+- La replica è gestita dal software Nutanix (tramite la CVM, Controller Virtual Machine).
+- Le copie dei dati sono distribuite in modo intelligente su nodi diversi, evitando che un singolo guasto possa causare la perdita di dati.
+- Non c’è un controller centrale come nelle SAN tradizionali: la resilienza è “distribuita” e non esiste un singolo punto di fallimento.
+
+---
+### In sintesi
+- **RF2**: Protegge da guasti singoli (nodo o disco).
+- **RF3**: Protegge da guasti multipli (fino a due nodi).
+- **Vantaggio**: I dati sono sempre disponibili e il cluster continua a funzionare anche in caso di guasti hardware, grazie alla replica distribuita.
 
 📌 11. CONFRONTO DIRETTO: NUTANIX HCI vs. VMWARE vSAN
 
