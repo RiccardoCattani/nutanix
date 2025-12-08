@@ -176,6 +176,22 @@ Controller Distribuito: Elimina il controller storage centrale, distribuendo la 
 Data Locality: La CVM assicura che la VM legga i propri dati dai dischi locali del proprio host, garantendo una latenza bassissima.
 Scalabilità Lineare: L'aggiunta di un nodo aggiunge simultaneamente CPU, RAM, dischi e un nuovo controller (CVM), garantendo un aumento prevedibile delle prestazioni (IOPS).
 
+---
+**Come funziona il percorso dei dati tra VM e storage in Nutanix**
+
+Quando una macchina virtuale (VM) invia una richiesta di lettura o scrittura, questa passa prima attraverso lo switch virtuale dell'hypervisor. Lo switch virtuale collega la VM alla rete interna e agli altri servizi.
+
+La richiesta viene poi inoltrata alla Controller Virtual Machine (CVM) presente sullo stesso nodo. La CVM gestisce l'I/O e decide dove salvare o recuperare i dati:
+- Se i dati richiesti sono locali, la CVM li legge direttamente dal disco del nodo, garantendo prestazioni e latenza ottimali.
+- Se i dati sono su un altro nodo, la CVM comunica con le CVM degli altri nodi tramite la rete interna del cluster per recuperare i dati.
+
+In sintesi, la VM comunica con lo storage locale tramite la CVM e l'hardware del nodo. Questo processo sfrutta la data locality: i dati della VM vengono salvati preferibilmente sul disco locale del nodo dove la VM risiede. Se necessario, la CVM può accedere anche ai dati distribuiti su altri nodi.
+
+Questo meccanismo garantisce:
+- Latenza minima tra VM e storage.
+- Prestazioni elevate grazie all'accesso diretto all'hardware locale.
+- Ridondanza e resilienza, perché le repliche dei dati sono gestite tra nodi diversi.
+
 📌 8. PERCHÉ NUTANIX RISOLVE I PROBLEMI DI PRESTAZIONE
 
 Data locality → Latenza bassissima.
@@ -339,3 +355,56 @@ Anche se i dati sono locali, Nutanix garantisce la sicurezza:
 **Confronto con Storage Tradizionale (SAN):**
 - **In una SAN tradizionale**: La VM deve sempre uscire dall'host, attraversare la rete (Fibre Channel/Ethernet) e raggiungere lo storage array esterno per ogni operazione di lettura/scrittura.
 - **In Nutanix**: Il dato è "a km 0", risiede dove serve. La rete viene usata principalmente per la replica di sicurezza, non per il traffico I/O primario.
+
+📌 16. COMPONENTI PRINCIPALI DEL CLUSTER NUTANIX
+
+Ora vogliamo capire quali sono i diversi componenti del cluster Nutanix. Ogni indagine ha una componente specifica che utilizziamo per gestire il nostro ambiente. L'elenco seguente vi aiuterà a capire come funzionano i componenti del cluster e a individuare rapidamente quale servizio è coinvolto in caso di problemi.
+Iniziamo con la semplice architettura di flusso: il browser (o un tool di orchestrazione) si connette all'ambiente Nutanix per inviare richieste o attività. 
+Queste richieste passano attraverso Prism, Zookeeper, Curator, Cassandra e Stargate fino all'hypervisor del server. Vediamo i componenti uno per uno:
+
+- **Stargate**: gestore I/O dei dati (distribuito). Espone lo storage agli altri sistemi e rappresenta il punto di contatto principale per l'hypervisor tramite NFS/iSCSI/SMB. Dipende da Medusa per i metadati e da Zeus per la configurazione del cluster.
+- **Cassandra**: archivio distribuito dei metadati, basato su Apache Cassandra modificato con coerenza forte (Paxos). Eseguito su ogni nodo; accesso tramite l'interfaccia Medusa; dipende da Zeus per le informazioni di cluster.
+- **Medusa (interfaccia Cassandra)**: livello di astrazione e accesso a Cassandra, utilizzato da componenti che devono leggere/scrivere metadati (es. per tracciare posizione dei dati e repliche).
+- **Curator**: orchestratore MapReduce per gestione e pulizia del cluster (bilanciamento dischi, scrubbing, ecc.). Gira su ogni nodo e opera tramite un leader eletto; dipende da Zeus per lo stato dei nodi e da Medusa per i dati, inviando poi comandi a Stargate.
+- **Zookeeper (Zeus)**: configuration manager del cluster basato su Apache Zookeeper. Conserva configurazione e stato di host, API, regole, ecc. Gira su 3 o 5 nodi in base al fattore di replica; uno viene eletto leader. Non ha dipendenze e può partire senza altri servizi.
+- **Prism**: interfaccia di gestione Nutanix (UI, CLI, REST API). Gira su ogni nodo con un leader eletto; sfrutta le tabelle IP di Linux per inoltrare le richieste al leader anche se ci si collega a un IP “slave” o virtuale. Comunica con Zeus per configurazione, con Cassandra per statistiche e con l'hypervisor per lo stato delle VM.
+
+Conoscere questi componenti permette di risalire velocemente al servizio giusto quando si verifica un problema (es. verificare se un servizio è attivo o meno) e capire cosa avviene in background quando ci si connette all'ambiente cluster via browser.
+
+📌 17. BLOCCO, NODO E RACK (HARDWARE) E SCELTA DELL’APPLIANCE
+
+Ciao e benvenuto di nuovo. Prima di progettare capacità e resilienza è fondamentale capire come si compongono blocco, nodo e rack.
+
+- **Hardware non vincolante**: Nutanix usa i propri blocchi come esempio, ma puoi adottare qualsiasi hardware certificato per HCI (Dell, HPE, Lenovo, IBM, ecc.). Se non usi appliance Nutanix, dovrai acquistare la licenza software Nutanix per ottenere le stesse funzionalità (hypervisor AHV e gestione incluse solo nell’hardware Nutanix).
+- **Blocco (chassis)**: Enclosure che contiene più nodi (es. 1, 2, 4 nodi). La resilienza può essere ragionata a livello di nodo, di blocco o di rack.
+- **Nodo**: Singolo server fisico dentro il blocco; unità minima per il cluster e per le scelte di resilienza (RF2/RF3).
+- **Rack**: Insieme di blocchi e switch; la distribuzione dei nodi su rack diversi migliora la disponibilità in scenari di fault dominanti.
+
+In sintesi: per beneficiare della piattaforma iperconvergente conta che l’hardware supporti HCI; l’esempio con blocchi Nutanix è solo di riferimento. La resilienza viene calcolata distribuendo i nodi (e i blocchi) tra rack diversi quando possibile.
+
+📌 18. CHE COS’È UN RACK
+
+Un rack (o server rack) è un armadio/struttura che ospita più blocchi o server montati su guide (bay) fissate con viti. Profilo basso e chiuso, a differenza di un tower.
+
+- **Spazio e cablaggio**: più server uno sopra l’altro, con switch di rete in testa o alla base per organizzare connettività e cavi.
+- **Raffreddamento**: serve un sistema di cooling adeguato perché molti componenti in poco spazio generano calore.
+- **Unità rack (U)**: l’altezza si misura in “U” (1U = 1,75 pollici). Un blocco 1U usa una sola unità; un blocco 2U ne usa due, ecc.
+- **Capacità**: un rack da 16U può ospitare, ad esempio, 16 blocchi 1U oppure 8 blocchi 2U; la capacità varia per modello e marca.
+
+📌 19. COS’È UN BLOCCO
+
+Il blocco (chassis) è l’unità hardware che ospita uno o più nodi fisici. In Nutanix è chiamato “blocco”, ma il concetto vale anche per altri vendor (chassis/unità rack).
+
+- **Alloggiamento nodi**: a seconda del modello può contenere 1, 2, 3 o fino a 4 nodi; la densità dipende da formato (1U/2U) e modello.
+- **Frontale dischi**: espone gli slot per SSD/HDD con funzionalità hot-swap.
+- **Consumo di rack**: un blocco 1U occupa una sola unità nel rack; un blocco 2U ne occupa due.
+- **Vendor-agnostico**: puoi avere blocchi Nutanix NX o chassis di terze parti (HP, Dell, Lenovo, ecc.), purché certificati per HCI.
+
+📌 20. COS’È UN NODO
+
+Il nodo è il singolo server fisico all’interno del blocco, con CPU, RAM, dischi (SSD/HDD) frontali dedicati e le proprie interfacce di rete. I nodi non condividono dischi tra loro; ogni nodo usa i propri drive nel blocco.
+
+- **Densità per blocco**: in base al modello, un blocco può contenere 1, 2, 3 o 4 nodi (es. blocchi 1U/2U con layout multi-nodo).
+- **Componenti per nodo**: CPU, RAM, slot SSD/HDD con hot-swap, NIC proprie (tipicamente SFP+ 10GbE a 2 o 4 porte; possibili RJ45 1/10GbE). L’alimentazione può essere condivisa a livello di chassis, ma le risorse di calcolo e storage sono isolate per nodo.
+- **Indipendenza hardware**: ogni nodo ha il proprio backplane/riser, NIC e cablaggi; non accede ai dischi degli altri nodi.
+- **Varianti**: nodi densi (un nodo grande che occupa tutto il blocco) o layout multi-nodo in un unico blocco (fino a 4 nodi) a seconda del form factor.
