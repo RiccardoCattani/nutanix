@@ -264,21 +264,21 @@ Supponiamo di avere un cluster Nutanix con 5 nodi e RF3:
 
 Il passaggio da un'infrastruttura tradizionale basata su SAN/NAS a Nutanix HCI è tipicamente un processo graduale, che minimizza i rischi e i tempi di inattività.
 
-Fasi della Migrazione:
-Installazione e Configurazione: Installazione di un nuovo cluster Nutanix HCI in parallelo all'infrastruttura SAN esistente. Entrambi gli ambienti coesistono.
-Validazione: Esecuzione di test (prestazioni, funzionalità) sul nuovo cluster HCI utilizzando carichi di lavoro non critici.
-Migrazione dei Dati/VM: Le macchine virtuali vengono spostate gradualmente dalla vecchia SAN al nuovo cluster Nutanix.
-Metodo a Zero Downtime: Se l'hypervisor è VMware, si può utilizzare la tecnologia vMotion per spostare le VM in esecuzione dalla SAN a Nutanix senza interruzioni di servizio.
-Metodo Nutanix: Strumenti nativi di Nutanix (come l'utility Move) possono facilitare la migrazione di massa.
-Decommissioning: Una volta che tutti i carichi di lavoro critici sono migrati e il cluster HCI è completamente validato, l'hardware legacy (controller SAN, storage array, switch Fibre Channel) viene spento e rimosso.
+# Fasi della Migrazione:
+- Installazione e Configurazione: Installazione di un nuovo cluster Nutanix HCI in parallelo all'infrastruttura SAN esistente. Entrambi gli ambienti coesistono.
+- Validazione: Esecuzione di test (prestazioni, funzionalità) sul nuovo cluster HCI utilizzando carichi di lavoro non critici.
+- Migrazione dei Dati/VM: Le macchine virtuali vengono spostate gradualmente dalla vecchia SAN al nuovo cluster Nutanix.
+- Metodo a Zero Downtime: Se l'hypervisor è VMware, si può utilizzare la tecnologia vMotion per spostare le VM in esecuzione dalla SAN a Nutanix senza interruzioni di servizio.
+- Metodo Nutanix: Strumenti nativi di Nutanix (come l'utility Move) possono facilitare la migrazione di massa.
+- Decommissioning: Una volta che tutti i carichi di lavoro critici sono migrati e il cluster HCI è completamente validato, l'hardware legacy (controller SAN, storage array, switch Fibre Channel) viene spento e rimosso.
 Questo approccio a "big bang" (tutto o niente) è evitato in favore di una migrazione graduale e non interruttiva, sfruttando la capacità di Nutanix di operare in parallelo all'infrastruttura esistente.
+
 📌 13. APPROFONDIMENTO: BLOCCHI, NODI E GESTIONE DELLO STORAGE
 
 Per verificare la presenza e l'operatività di un cluster Nutanix, è necessario disporre di almeno **tre host fisici (nodi)**.
 
 **Concetto di Blocco e Nodo:**
-- Un **Blocco** (Chassis) è l'unità fisica che ospita i server.
-- Un blocco può contenere, ad esempio, quattro nodi, due nodi o un singolo nodo.
+- Un **Blocco** (Chassis) è l'unità fisica che ospita i server. Un blocco può contenere, ad esempio, quattro nodi, due nodi o un singolo nodo.
 - Un **Nodo** corrisponde a un server fisico.
 
 Se non si dispone di almeno tre nodi (server fisici), non è possibile beneficiare di tutti i vantaggi della soluzione Nutanix (come la resilienza RF2).
@@ -291,7 +291,7 @@ Ogni nodo è un server bare metal che contiene:
     *   **Ibrido**: Combina SSD e HDD. Nutanix utilizza gli SSD per il **caching** (prestazioni) e gli HDD per l'**archiviazione** (capacity).
     *   **All-Flash**: Utilizza solo SSD per garantire massime prestazioni sia per il caching che per lo storage.
 
-**Livelli Software:**📌 Formazione_new.md
+**Livelli Software su ogni Nodo:**
 
 1.  **Hypervisor**: Installato direttamente sull'hardware. Può essere l'hypervisor nativo **AHV**, oppure **VMware ESXi**, **Hyper-V**, ecc.
 2.  **CVM (Controller Virtual Machine)**: Sopra l'hypervisor, su ogni nodo, gira una macchina virtuale speciale chiamata CVM.
