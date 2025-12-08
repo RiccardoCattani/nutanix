@@ -229,7 +229,7 @@ Supponiamo di avere un cluster Nutanix con 5 nodi e RF3:
 ### Come avviene la replica?
 - La replica è gestita dal software Nutanix (tramite la CVM, Controller Virtual Machine).
 - Le copie dei dati sono distribuite in modo intelligente su nodi diversi, evitando che un singolo guasto possa causare la perdita di dati.
-- Non c’è un controller centrale come nelle SAN tradizionali: la resilienza è “distribuita” e non esiste un singolo punto di fallimento.
+- Non c’è un controller centrale  come nelle SAN tradizionali: la resilienza è “distribuita” e non esiste un singolo punto di fallimento.
 
 ---
 ### In sintesi
@@ -239,13 +239,26 @@ Supponiamo di avere un cluster Nutanix con 5 nodi e RF3:
 
 📌 11. CONFRONTO DIRETTO: NUTANIX HCI vs. VMWARE vSAN
 
-Sia Nutanix che VMware vSAN sono soluzioni HCI, ma si differenziano per architettura e filosofia:
-Caratteristica	Nutanix HCI (AOS)	VMware vSAN
-Architettura del Controller	Controller di storage tramite una Controller Virtual Machine (CVM) separata che gira su ogni nodo.	Logica di storage integrata direttamente nel kernel dell'hypervisor ESXi (vSAN Kernel Module).
-Hypervisor Supportato	Multi-Hypervisor: Supporta AHV (nativo), VMware ESXi, Microsoft Hyper-V e KVM.	Monolitico: È strettamente legato all'hypervisor VMware vSphere (ESXi).
-Piattaforma	Piattaforma di cloud ibrido completa con servizi integrati (file, database, networking, ecc.) che vanno oltre lo storage.	Funzionalità primariamente focalizzata sul storage per l'ambiente vSphere.
-Flessibilità Hardware	Gira su un'ampia gamma di hardware certificato dai partner (Dell, HPE, Lenovo, ecc.) oppure su appliance proprietarie (Nutanix NX).	Richiede server che rientrino nella vSAN Hardware Compatibility List (HCL).
-In sintesi, Nutanix è una soluzione software-defined agnostica e completa che usa una CVM dedicata, mentre vSAN è una funzionalità integrata nel kernel di VMware, inscindibile dall'ecosistema vSphere.
+**1. Architettura del Controller**
+- Nutanix: Ogni nodo ha una Controller Virtual Machine (CVM) dedicata che gestisce lo storage. La gestione è distribuita, senza colli di bottiglia.
+- vSAN: La logica di storage è integrata nel kernel dell’hypervisor ESXi. Il controllo è centralizzato nel software dell’hypervisor.
+
+**2. Hypervisor Supportato**
+- Nutanix: Supporta diversi hypervisor (AHV nativo, VMware ESXi, Microsoft Hyper-V, KVM). Flessibile e agnostico.
+- vSAN: Funziona solo con VMware vSphere/ESXi. Soluzione monolitica e vincolata all’ecosistema VMware.
+
+**3. Piattaforma**
+- Nutanix: Offre una piattaforma di cloud ibrido con servizi integrati (file, database, networking, ecc.), andando oltre il semplice storage.
+- vSAN: Focalizzata principalmente sullo storage per ambienti vSphere.
+
+**4. Flessibilità Hardware**
+- Nutanix: Può essere installata su hardware certificato di vari produttori (Dell, HPE, Lenovo, ecc.) o su appliance Nutanix NX.
+- vSAN: Richiede server che rispettino la vSAN Hardware Compatibility List (HCL), quindi la scelta hardware è più limitata.
+
+**Sintesi**
+- Nutanix è una soluzione software-defined, flessibile e distribuita, con una CVM dedicata su ogni nodo.
+- vSAN è integrata nel kernel di VMware, meno flessibile e legata all’ecosistema VMware.
+
 
 📌 12. PERCORSO DI MIGRAZIONE: DA SAN TRADIZIONALE A HCI
 
