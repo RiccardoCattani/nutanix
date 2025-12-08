@@ -390,3 +390,54 @@ Un rack (o server rack) è un armadio/struttura che ospita più blocchi o server
 - **Raffreddamento**: serve un sistema di cooling adeguato perché molti componenti in poco spazio generano calore.
 - **Unità rack (U)**: l’altezza si misura in “U” (1U = 1,75 pollici). Un blocco 1U usa una sola unità; un blocco 2U ne usa due, ecc.
 - **Capacità**: un rack da 16U può ospitare, ad esempio, 16 blocchi 1U oppure 8 blocchi 2U; la capacità varia per modello e marca.
+
+📌 19. COS’È UN BLOCCO
+
+Il blocco (chassis) è l’unità hardware che ospita uno o più nodi fisici. Espone sul frontale gli slot per SSD/HDD hot-swap. A seconda del modello può contenere 1, 2, 3 o 4 nodi e occupa 1U o 2U nel rack. Il concetto è vendor-agnostico: vale per i blocchi Nutanix NX e per chassis equivalenti di altri produttori.
+
+📌 20. COS’È UN NODO
+
+Il nodo è il singolo server fisico dentro il blocco, con CPU, RAM, dischi frontali dedicati e proprie interfacce di rete. I nodi non condividono i dischi tra loro: ciascuno utilizza solo i drive assegnati nel blocco. In base al modello del blocco puoi avere layout a nodo unico (un nodo grande che occupa tutto lo chassis) oppure multi-nodo (fino a 4 nodi nello stesso blocco).
+
+📌 21. COME SI LEGGE IL MODELLO HARDWARE
+
+Le stringhe di modello riportate sul frontale/laterale del blocco indicano marca, famiglia e configurazione:
+
+- **Prefisso di marca**: identifica il vendor (es. NX per Nutanix, altri prefissi per hardware di terze parti).
+- **Famiglia (prima cifra)**: 1 = edge/filiali o piccoli uffici; 3 = uso generale con compute più robusto; 5 = file/object workload dedicati; 6 = storage-heavy; 8 = alte prestazioni (CPU/GPU, I/O elevato); 9 = alta prestazione/sperimentale.
+- **Conteggio nodi (seconda cifra)**: quante unità server sono presenti nel blocco (1, 2, 3 o 4).
+- **Form factor chassis (terza cifra)**: indica l’altezza in rack e il layout (es. 7 spesso 1U mono-nodo, 6 tipicamente 2U mono-nodo; varia per famiglia/modello).
+- **Form factor dischi (quarta cifra)**: 0 per drive da 2.5", 5 per drive da 3.5".
+- **Variante (suffisso opzionale)**: lettere/numeri per capacità, presenza GPU o CPU single/dual.
+- **Generazione CPU (Gx)**: G4 Haswell, G5 Broadwell, G6 Skylake, G7 Cascade Lake (e successivi).
+
+📌 22. INSTALLAZIONE CON NUTANIX FOUNDATION
+
+Per installare Nutanix in laboratorio o in produzione si utilizza Nutanix Foundation.
+
+- **Opzioni Foundation**: VM preconfigurata da eseguire su VMware Workstation/Fusion/VirtualBox, oppure Foundation for Windows/Mac installabile direttamente sul PC (senza hypervisor locale).
+- **Download**: scarica la Foundation VM dal portale Nutanix o l’installer Foundation per Windows/Mac.
+- **Switch di rete**: per un home lab con un blocco fino a 4 nodi serve uno switch Gigabit da almeno 8 porte; una porta per ciascun nodo più una per il notebook di installazione. In ambienti più grandi, dimensiona le porte in base al numero di nodi.
+- **Cabling**: un cavo Ethernet per ogni nodo + uno per il notebook, tutti collegati allo stesso switch.
+- **Hypervisor ISO**: tieni disponibili le immagini ISO dell’hypervisor che intendi installare (VMware ESXi, Microsoft Hyper-V, Citrix, ecc.).
+- **Notebook/PC di controllo**: ospita la Foundation VM oppure l’installer Foundation for Windows/Mac e avvia il workflow di installazione verso i nodi del blocco.
+
+📌 23. ESEMPIO DI BLOCCO NUTANIX A 4 NODI (VISTA FRONT/BACK)
+
+Ecco un esempio pratico di blocco Nutanix con quattro nodi (A, B, C, D), utile per orientarsi su slot dischi e porte.
+
+- **Isolamento nodi**: i nodi non condividono risorse tra loro, salvo le alimentazioni e lo chassis.
+- **Alimentazione ridondata**: due PSU condivise nello chassis, da collegare a feed elettrici separati.
+- **Porte di rete per nodo**: tipicamente 2x SFP+ 10GbE (quattro porte totali se si considerano coppie) + 1x RJ45 (management/servizio), più eventuale spazio per aggiungere una NIC ulteriore; porte USB 3.0 e VGA per console locale.
+- **Slot dischi per nodo (frontale)**: sei bay per SSD/HDD (es. 6× ~2 TB per nodo); ogni nodo usa solo i propri dischi, non accede a quelli degli altri.
+- **Identificazione nodi**: serigrafie “Node A/B/C/D” sul frontale/posteriore per individuare dischi e porte corrispondenti.
+
+📌 24. PORTE DI GESTIONE E CABLAGGIO PER FOUNDATION
+
+Per avviare Foundation va identificata la porta di gestione IP (BMC/IPMI) di ciascun nodo e va collegata allo switch usato per l’installazione.
+
+- **Porta di gestione**: spesso RJ45 dedicata; su alcuni modelli si può usare una porta dati 10GbE condivisa per la gestione. Usare la porta indicata come management/IPMI per la messa in servizio.
+- **Locator**: LED “locator”/identify sul nodo aiutano a riconoscere l’host corretto da software.
+- **Cabling**: un cavo Ethernet dalla porta di gestione di ogni nodo allo switch (home/office) usato per Foundation; collegare anche il notebook allo stesso switch.
+- **Esempio 3-4 nodi**: per 3 nodi servono 3 porte di switch + 1 per il notebook; per 4 nodi, 4 porte + 1 notebook. Dimensiona le porte in base al numero di nodi.
+- **Nota**: le porte dati 10GbE resteranno per il traffico di produzione; per Foundation si usa la porta di gestione.
