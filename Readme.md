@@ -159,6 +159,62 @@ Il cuore dell'architettura. La CVM è una VM dedicata su ogni host che sostituis
 Distributed Storage Fabric: La CVM converte lo storage locale in un unico pool di storage logico distribuito a livello di cluster.
 Se non c'è CVM, non c'è HCI, ossia una infrastruttura iperconvergente (Hyper-Converged Infrastructure)
 
+---
+📌 6B. CONFIGURAZIONE DELLO STORAGE IN NUTANIX: POOL, CONTAINER, VOLUME GROUP
+
+**Dopo l’installazione e il primo accesso al cluster Nutanix, la prima operazione fondamentale è la configurazione dello storage.**
+
+### Step iniziali
+1. Accedi all’interfaccia di gestione Nutanix Prism.
+2. Vai alla sezione “Storage”.
+3. Visualizza la panoramica: qui trovi la situazione dei dischi, la capacità totale, lo spazio libero, i pool e i container esistenti.
+4. Il sistema crea automaticamente un **Storage Pool** predefinito che aggrega tutti i dischi dei nodi del cluster.
+5. Puoi aggiungere nuovi nodi: i loro dischi verranno aggiunti dinamicamente al pool esistente.
+
+---
+### Concetti chiave dello storage Nutanix
+
+#### 📦 1) Storage Pool (SP)
+- **Cos’è:** Il livello fisico dello storage Nutanix. Raggruppa tutti i dischi (SSD + HDD) degli host del cluster in un unico pool distribuito.
+- **Caratteristiche:**
+  - Astrazione hardware: gestisce resilienza, tiering, compressione, deduplica.
+  - Fornisce la capacità bruta e resiliente ai livelli superiori.
+  - Ogni cluster Nutanix ha almeno uno storage pool.
+- **A cosa serve:** Creare lo spazio condiviso da cui derivano gli Storage Container.
+
+#### 📁 2) Storage Container (SC)
+- **Cos’è:** Una porzione logica dello Storage Pool. All’interno del container risiedono le VM: dischi virtuali (VMDK/VHDX), snapshot, template.
+- **Caratteristiche:**
+  - Può avere politiche diverse dallo Storage Pool (compressione, deduplica, QoS, riservazioni spazio).
+  - Utilizzato per: dischi VM, immagini, snapshot/replication targets.
+- **A cosa serve:** Dare un’area logica e gestionale in cui risiedono le VM, pur usando lo storage fisico dello Storage Pool.
+
+#### 🧩 3) Volume Group (VG)
+- **Cos’è:** Un insieme di volumi a blocchi (iSCSI) forniti da Nutanix ad applicazioni o server fisici/VM che richiedono accesso block-level.
+- **A cosa serve:** Offrire storage a blocchi (iSCSI) invece che file-based come gli Storage Container. Usato per database, cluster guest-based, applicazioni legacy.
+- **Come funziona:** I volumi del VG si appoggiano allo Storage Pool, ma non sono contenuti in uno Storage Container. Vengono presentati via iSCSI come LUN a VM o server esterni.
+
+---
+### Sintesi tabellare
+
+| Livello         | Cos’è                                      | A cosa serve / Note principali                       |
+|-----------------|---------------------------------------------|-----------------------------------------------------|
+| Storage Pool    | Pool fisico di tutti i dischi del cluster   | Capacità grezza, resilienza, base per i container    |
+| Storage Container | Area logica nello storage pool             | Dove risiedono VM, dischi virtuali, snapshot         |
+| Volume Group    | Gruppo di volumi a blocchi (iSCSI)          | Storage a blocchi per DB, cluster, app legacy        |
+
+---
+### Esempio pratico
+
+Supponiamo di avere un cluster con 3 nodi. Dopo l’installazione:
+- Tutti i dischi vengono aggregati in uno Storage Pool.
+- Viene creato un Container predefinito dove risiederanno le VM.
+- Se aggiungi un nodo, i suoi dischi si aggiungono automaticamente al pool.
+- Puoi creare uno o più Volume Group per esigenze specifiche (es. database esterni via iSCSI).
+
+---
+**Nota:** Le funzionalità di efficienza (compressione, deduplica, erasure coding, fattore di replica) sono configurabili a livello di container.
+
 È il concetto fondamentale su cui si basa Nutanix, in parole semplici:
 a) Tradizionale (Converged): Hai 3 silos separati che devi comprare, collegare e gestire separatamente:
   - Server (Compute)
@@ -441,3 +497,5 @@ Per avviare Foundation va identificata la porta di gestione IP (BMC/IPMI) di cia
 - **Cabling**: un cavo Ethernet dalla porta di gestione di ogni nodo allo switch (home/office) usato per Foundation; collegare anche il notebook allo stesso switch.
 - **Esempio 3-4 nodi**: per 3 nodi servono 3 porte di switch + 1 per il notebook; per 4 nodi, 4 porte + 1 notebook. Dimensiona le porte in base al numero di nodi.
 - **Nota**: le porte dati 10GbE resteranno per il traffico di produzione; per Foundation si usa la porta di gestione.
+
+
