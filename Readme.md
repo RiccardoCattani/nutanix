@@ -203,9 +203,9 @@ Il Volume Group, invece, è un insieme di volumi a blocchi (iSCSI) pensato per o
 
 # Vediamo un confronto con VMware per chiarire i concetti:
 
-- Storage Pool: è il livello fisico che aggrega i dischi dei nodi Nutanix. In VMware il concetto più vicino è il gruppo di dischi/vSAN datastore, cioè il pool di capacità fisica che alimenta poi i datastore logici. È la parte in cui decidi quali dischi locali di un host entrano in un determinato disk group, stabilisci quali SSD fanno da cache e quali HDD forniscono capacità, e vSAN li somma in un'unica “capacità condivisa” prima ancora che tu crei i datastore VMFS/NFS che verranno montati dagli host.
+- Storage Pool: è il livello fisico che aggrega i dischi dei nodi Nutanix. In VMware il concetto più vicino è il gruppo di dischi/vSAN datastore, cioè il pool di capacità fisica che alimenta poi i datastore logici. È la parte in cui decidi quali dischi locali di un host entrano in un determinato disk group, stabilisci quali SSD fanno da cache e quali HDD forniscono capacità, e vSAN li somma in un'unica “capacità condivisa” prima ancora che tu crei i datastore VMFS/NFS che verranno montati dagli host. Se non usi vSAN ma hai una SAN/NAS tradizionale, pensa allo Storage Pool Nutanix come al RAID group/pool fisico che configuri sullo storage array (es. creare un pool RAID 5/6 su 10 dischi) prima di presentare una o più LUN agli host ESXi: è lo stesso livello “grezzo” dove definisci resilienza e capacità fisica, da cui poi nascono i datastore logici che l’hypervisor monta.
 - Storage Container: è la porzione logica di quello storage che l’hypervisor monta per ospitare le VM. In VMware corrisponde al datastore (VMFS/NFS) che vedi dal vSphere Client e su cui risiedono i file delle macchine virtuali.
-- Volume Group: espone volumi a blocchi via iSCSI verso i guest per esigenze “tradizionali” (database, cluster applicativi). In VMware l’analogia è con un LUN/RDM o con un target iSCSI che presenti direttamente al guest quando non vuoi passare dallo storage file-based del datastore.
+- Volume Group: espone volumi a blocchi via iSCSI verso i guest per esigenze “tradizionali” (database, cluster applicativi). In VMware l’analogia è con un LUN/RDM o con un target iSCSI che presenti direttamente al guest quando non vuoi passare dallo storage file-based del datastore. È il caso in cui, invece di lasciare che la VM usi un disco VMDK appoggiato a un datastore, vuoi farle “vedere” un disco raw, come faresti quando mappi un LUN SAN dentro il guest per un cluster SQL/Oracle o quando presenti una LUN RDM per un failover cluster: Nutanix crea questo LUN virtuale (Volume Group), lo espone via iSCSI, e il sistema operativo della VM lo gestisce come se fosse uno storage esterno dedicato, fuori dai file VMDK.
 
 ### Esempio pratico
 
@@ -500,4 +500,3 @@ Per avviare Foundation va identificata la porta di gestione IP (BMC/IPMI) di cia
 - **Cabling**: un cavo Ethernet dalla porta di gestione di ogni nodo allo switch (home/office) usato per Foundation; collegare anche il notebook allo stesso switch.
 - **Esempio 3-4 nodi**: per 3 nodi servono 3 porte di switch + 1 per il notebook; per 4 nodi, 4 porte + 1 notebook. Dimensiona le porte in base al numero di nodi.
 - **Nota**: le porte dati 10GbE resteranno per il traffico di produzione; per Foundation si usa la porta di gestione.
-
