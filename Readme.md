@@ -218,6 +218,25 @@ Supponiamo di avere un cluster con 3 nodi. Dopo l’installazione:
 ---
 **Nota:** Le funzionalità di efficienza (compressione, deduplica, erasure coding, fattore di replica) sono configurabili a livello di container.
 
+### Nota: cosa contiene veramente un VMDK?
+- Un VMDK è solo un file che rappresenta un disco a blocchi. Finché la VM non lo inizializza è “vuoto” (raw). Quando il sistema operativo dentro la VM lo vede per la prima volta, lo partiziona e ci crea un file system (NTFS, ext4, XFS, ecc.) esattamente come farebbe su un disco fisico.
+- Un disco raw/RDM non è diverso dal punto di vista del guest: al posto di un file VMDK riceve direttamente una LUN iSCSI/FC esterna, ma sempre blocchi grezzi sono. Anche qui il file system vive nel sistema operativo della VM.
+- Morale: né i VMDK né i dischi raw hanno un file system “dell’hypervisor”. L’hypervisor consegna blocchi; è sempre il guest OS a decidere come formattarli e a gestire il proprio file system.
+- Quindi sì, **entrambi sono grezzi** prima della formattazione: la sola differenza pratica è dove vivono quei blocchi (file `.vmdk` dentro un datastore vs LUN esterna passata in RDM), non il modo in cui il guest li usa.
+
+> **Metafora disco vs file**  
+> - “Vedere un disco” = ti danno un quaderno vuoto: sta a te decidere come dividerlo (partizioni) e cosa scriverci (file system). Finché non scrivi nulla, è solo carta bianca.  
+> - “Vedere un file” = apri un capitolo già scritto dentro un quaderno che qualcuno ha già organizzato. Stai leggendo qualcosa che esiste perché il quaderno è stato preparato prima (formattato) e ci sono testi già salvati.  
+> Così funziona anche per le VM: l’hypervisor ti consegna il quaderno vuoto (disco); il sistema operativo della VM lo organizza e ci crea i file. 
+
+> **Datastore vs LUN esterna**  
+> - **Datastore VMFS/NFS:** è uno spazio condiviso che l’hypervisor monta e gestisce a livello file: dentro ci stanno i VMDK, gli ISO, gli snapshot. Più host possono accedere allo stesso datastore per eseguire le VM.  
+> - **LUN esterna/RDM:** è un volume a blocchi presentato direttamente al guest. L’hypervisor non lo usa per salvare file; fa solo pass-through verso la VM, che lo vede come disco dedicato.  
+> - Quando usi un datastore, condividi lo storage via file VMDK. Quando usi una LUN esterna, dai a una VM (o a un cluster guest) un disco raw riservato, tipicamente per database o applicazioni che vogliono gestire da sole il proprio storage.
+> - **Differenza vera:** è la modalità d’uso e gestione, non tanto le prestazioni. Un VMDK sta dentro un file su datastore ed è più facile da gestire (snapshot, vMotion). Un RDM/LUN raw è utile quando serve compatibilità con cluster guest o applicazioni che richiedono accesso diretto al volume. A livello di I/O nativo le prestazioni sono equivalenti perché entrambi parlano con lo stesso storage; cambiano solo le feature disponibili.
+> - **Vantaggi VMDK:** gestione centralizzata (snapshot, cloning, Storage vMotion), portabilità, backup più semplice, supporto a tutte le feature VMware senza vincoli.  
+> - **Vantaggi RDM/LUN raw:** compatibilità con software che pretende un disco “fisico” (cluster guest di Windows/Oracle, applicazioni che usano comandi SCSI speciali), possibilità di condividere lo stesso LUN tra più VM guest in cluster, mantenendo la logica di resilienza del vendor esterno.
+
 È il concetto fondamentale su cui si basa Nutanix, in parole semplici:
 a) Tradizionale (Converged): Hai 3 silos separati che devi comprare, collegare e gestire separatamente:
   - Server (Compute)
