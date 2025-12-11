@@ -175,7 +175,7 @@ Se non c'è CVM, non c'è HCI, ossia una infrastruttura iperconvergente (Hyper-C
 ### Concetti chiave dello storage Nutanix
 
 #### 📦 1) Storage Pool (SP)
-- **Cos’è:** Il livello fisico dello storage Nutanix. Raggruppa tutti i dischi (SSD + HDD) degli host del cluster in un unico pool distribuito.
+- **Cos’è:** Il livello fisico dello storage Nutanix. Raggruppa tutti i dischi fisici(SSD + HDD) degli host del cluster in un unico pool distribuito.
 - **Caratteristiche:**
   - Astrazione hardware: gestisce resilienza, tiering, compressione, deduplica.
   - Fornisce la capacità bruta e resiliente ai livelli superiori.
@@ -195,15 +195,18 @@ Se non c'è CVM, non c'è HCI, ossia una infrastruttura iperconvergente (Hyper-C
 - **Come funziona:** I volumi del VG si appoggiano allo Storage Pool, ma non sono contenuti in uno Storage Container. Vengono presentati via iSCSI come LUN a VM o server esterni.
 
 ---
-### Sintesi tabellare
+### Sintesi dei concetti
 
-| Livello         | Cos’è                                      | A cosa serve / Note principali                       |
-|-----------------|---------------------------------------------|-----------------------------------------------------|
-| Storage Pool    | Pool fisico di tutti i dischi del cluster   | Capacità grezza, resilienza, base per i container    |
-| Storage Container | Area logica nello storage pool             | Dove risiedono VM, dischi virtuali, snapshot         |
-| Volume Group    | Gruppo di volumi a blocchi (iSCSI)          | Storage a blocchi per DB, cluster, app legacy        |
+Lo Storage Pool è il livello fisico dello storage Nutanix: raggruppa tutti i dischi del cluster, fornendo capacità grezza e resilienza, ed è la base su cui vengono creati i livelli superiori. 
+Lo Storage Container è una suddivisione logica all’interno dello storage pool, dove risiedono le macchine virtuali, i dischi virtuali e gli snapshot; serve a gestire e organizzare lo spazio per le VM. 
+Il Volume Group, invece, è un insieme di volumi a blocchi (iSCSI) pensato per offrire storage a blocchi a database, cluster o applicazioni legacy che richiedono accesso diretto ai volumi, distinto dallo storage file-based dei container.    |
 
----
+# Vediamo un confronto con VMware per chiarire i concetti:
+
+Storage Pool: è il livello fisico che aggrega i dischi dei nodi Nutanix. In VMware il concetto più vicino è il gruppo di dischi/vSAN datastore, cioè il pool di capacità fisica che alimenta poi i datastore logici.
+Storage Container: è la porzione logica di quello storage che l’hypervisor monta per ospitare le VM. In VMware corrisponde al datastore (VMFS/NFS) che vedi dal vSphere Client e su cui risiedono i file delle macchine virtuali.
+Volume Group: espone volumi a blocchi via iSCSI verso i guest per esigenze “tradizionali” (database, cluster applicativi). In VMware l’analogia è con un LUN/RDM o con un target iSCSI che presenti direttamente al guest quando non vuoi passare dallo storage file-based del datastore.
+
 ### Esempio pratico
 
 Supponiamo di avere un cluster con 3 nodi. Dopo l’installazione:
