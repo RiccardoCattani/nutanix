@@ -175,7 +175,7 @@ Se non c'è CVM, non c'è HCI, ossia una infrastruttura iperconvergente (Hyper-C
 ### Concetti chiave dello storage Nutanix
 
 #### 📦 1) Storage Pool (SP)
-- **Cos’è:** Il livello fisico dello storage Nutanix. Raggruppa tutti i dischi (SSD + HDD) degli host del cluster in un unico pool distribuito.
+- **Cos’è:** Il livello fisico dello storage Nutanix. Raggruppa tutti i dischi fisici(SSD + HDD) degli host del cluster in un unico pool distribuito.
 - **Caratteristiche:**
   - Astrazione hardware: gestisce resilienza, tiering, compressione, deduplica.
   - Fornisce la capacità bruta e resiliente ai livelli superiori.
@@ -195,15 +195,18 @@ Se non c'è CVM, non c'è HCI, ossia una infrastruttura iperconvergente (Hyper-C
 - **Come funziona:** I volumi del VG si appoggiano allo Storage Pool, ma non sono contenuti in uno Storage Container. Vengono presentati via iSCSI come LUN a VM o server esterni.
 
 ---
-### Sintesi tabellare
+### Sintesi dei concetti
 
-| Livello         | Cos’è                                      | A cosa serve / Note principali                       |
-|-----------------|---------------------------------------------|-----------------------------------------------------|
-| Storage Pool    | Pool fisico di tutti i dischi del cluster   | Capacità grezza, resilienza, base per i container    |
-| Storage Container | Area logica nello storage pool             | Dove risiedono VM, dischi virtuali, snapshot         |
-| Volume Group    | Gruppo di volumi a blocchi (iSCSI)          | Storage a blocchi per DB, cluster, app legacy        |
+Lo Storage Pool è il livello fisico dello storage Nutanix: raggruppa tutti i dischi del cluster, fornendo capacità grezza e resilienza, ed è la base su cui vengono creati i livelli superiori. 
+Lo Storage Container è una suddivisione logica all’interno dello storage pool, dove risiedono le macchine virtuali, i dischi virtuali e gli snapshot; serve a gestire e organizzare lo spazio per le VM. 
+Il Volume Group, invece, è un insieme di volumi a blocchi (iSCSI) pensato per offrire storage a blocchi a database, cluster o applicazioni legacy che richiedono accesso diretto ai volumi, distinto dallo storage file-based dei container.    |
 
----
+# Vediamo un confronto con VMware per chiarire i concetti:
+
+- Storage Pool: è il livello fisico che aggrega i dischi dei nodi Nutanix. In VMware il concetto più vicino è il gruppo di dischi/vSAN datastore, cioè il pool di capacità fisica che alimenta poi i datastore logici. È la parte in cui decidi quali dischi locali di un host entrano in un determinato disk group, stabilisci quali SSD fanno da cache e quali HDD forniscono capacità, e vSAN li somma in un'unica “capacità condivisa” prima ancora che tu crei i datastore VMFS/NFS che verranno montati dagli host. Se non usi vSAN ma hai una SAN/NAS tradizionale, pensa allo Storage Pool Nutanix come al RAID group/pool fisico che configuri sullo storage array (es. creare un pool RAID 5/6 su 10 dischi) prima di presentare una o più LUN agli host ESXi: è lo stesso livello “grezzo” dove definisci resilienza e capacità fisica, da cui poi nascono i datastore logici che l’hypervisor monta.
+- Storage Container: è la porzione logica di quello storage che l’hypervisor monta per ospitare le VM. In VMware corrisponde al datastore (VMFS/NFS) che vedi dal vSphere Client e su cui risiedono i file delle macchine virtuali.
+- Volume Group: espone volumi a blocchi via iSCSI verso i guest per esigenze “tradizionali” (database, cluster applicativi). In VMware l’analogia è con un LUN/RDM o con un target iSCSI che presenti direttamente al guest quando non vuoi passare dallo storage file-based del datastore. È il caso in cui, invece di lasciare che la VM usi un disco VMDK appoggiato a un datastore, vuoi farle “vedere” un disco raw, come faresti quando mappi un LUN SAN dentro il guest per un cluster SQL/Oracle o quando presenti una LUN RDM per un failover cluster: Nutanix crea questo LUN virtuale (Volume Group), lo espone via iSCSI, e il sistema operativo della VM lo gestisce come se fosse uno storage esterno dedicato, fuori dai file VMDK.
+
 ### Esempio pratico
 
 Supponiamo di avere un cluster con 3 nodi. Dopo l’installazione:
@@ -214,6 +217,25 @@ Supponiamo di avere un cluster con 3 nodi. Dopo l’installazione:
 
 ---
 **Nota:** Le funzionalità di efficienza (compressione, deduplica, erasure coding, fattore di replica) sono configurabili a livello di container.
+
+### Nota: cosa contiene veramente un VMDK?
+- Un VMDK è solo un file che rappresenta un disco a blocchi. Finché la VM non lo inizializza è “vuoto” (raw). Quando il sistema operativo dentro la VM lo vede per la prima volta, lo partiziona e ci crea un file system (NTFS, ext4, XFS, ecc.) esattamente come farebbe su un disco fisico.
+- Un disco raw/RDM non è diverso dal punto di vista del guest: al posto di un file VMDK riceve direttamente una LUN iSCSI/FC esterna, ma sempre blocchi grezzi sono. Anche qui il file system vive nel sistema operativo della VM.
+- Morale: né i VMDK né i dischi raw hanno un file system “dell’hypervisor”. L’hypervisor consegna blocchi; è sempre il guest OS a decidere come formattarli e a gestire il proprio file system.
+- Quindi sì, **entrambi sono grezzi** prima della formattazione: la sola differenza pratica è dove vivono quei blocchi (file `.vmdk` dentro un datastore vs LUN esterna passata in RDM), non il modo in cui il guest li usa.
+
+> **Metafora disco vs file**  
+> - “Vedere un disco” = ti danno un quaderno vuoto: sta a te decidere come dividerlo (partizioni) e cosa scriverci (file system). Finché non scrivi nulla, è solo carta bianca.  
+> - “Vedere un file” = apri un capitolo già scritto dentro un quaderno che qualcuno ha già organizzato. Stai leggendo qualcosa che esiste perché il quaderno è stato preparato prima (formattato) e ci sono testi già salvati.  
+> Così funziona anche per le VM: l’hypervisor ti consegna il quaderno vuoto (disco); il sistema operativo della VM lo organizza e ci crea i file. 
+
+> **Datastore vs LUN esterna**  
+> - **Datastore VMFS/NFS:** è uno spazio condiviso che l’hypervisor monta e gestisce a livello file: dentro ci stanno i VMDK, gli ISO, gli snapshot. Più host possono accedere allo stesso datastore per eseguire le VM.  
+> - **LUN esterna/RDM:** è un volume a blocchi presentato direttamente al guest. L’hypervisor non lo usa per salvare file; fa solo pass-through verso la VM, che lo vede come disco dedicato.  
+> - Quando usi un datastore, condividi lo storage via file VMDK. Quando usi una LUN esterna, dai a una VM (o a un cluster guest) un disco raw riservato, tipicamente per database o applicazioni che vogliono gestire da sole il proprio storage.
+> - **Differenza vera:** è la modalità d’uso e gestione, non tanto le prestazioni. Un VMDK sta dentro un file su datastore ed è più facile da gestire (snapshot, vMotion). Un RDM/LUN raw è utile quando serve compatibilità con cluster guest o applicazioni che richiedono accesso diretto al volume. A livello di I/O nativo le prestazioni sono equivalenti perché entrambi parlano con lo stesso storage; cambiano solo le feature disponibili.
+> - **Vantaggi VMDK:** gestione centralizzata (snapshot, cloning, Storage vMotion), portabilità, backup più semplice, supporto a tutte le feature VMware senza vincoli.  
+> - **Vantaggi RDM/LUN raw:** compatibilità con software che pretende un disco “fisico” (cluster guest di Windows/Oracle, applicazioni che usano comandi SCSI speciali), possibilità di condividere lo stesso LUN tra più VM guest in cluster, mantenendo la logica di resilienza del vendor esterno.
 
 È il concetto fondamentale su cui si basa Nutanix, in parole semplici:
 a) Tradizionale (Converged): Hai 3 silos separati che devi comprare, collegare e gestire separatamente:
@@ -497,5 +519,3 @@ Per avviare Foundation va identificata la porta di gestione IP (BMC/IPMI) di cia
 - **Cabling**: un cavo Ethernet dalla porta di gestione di ogni nodo allo switch (home/office) usato per Foundation; collegare anche il notebook allo stesso switch.
 - **Esempio 3-4 nodi**: per 3 nodi servono 3 porte di switch + 1 per il notebook; per 4 nodi, 4 porte + 1 notebook. Dimensiona le porte in base al numero di nodi.
 - **Nota**: le porte dati 10GbE resteranno per il traffico di produzione; per Foundation si usa la porta di gestione.
-
-
