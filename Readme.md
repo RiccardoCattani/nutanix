@@ -343,10 +343,30 @@ Nutanix gestisce la tolleranza ai guasti e l'alta disponibilità anche attravers
 - **Upgrade RF2→RF3**: richiede capacità libera sufficiente per creare le copie aggiuntive; durante l’upgrade viene eseguito un rebalance per portare ogni estensione dati a tre copie. Non è reversibile senza ricreare i container/cluster.
 - **Fattore di Replica**: è la policy per container; puoi avere container RF2 e RF3 nello stesso cluster per segmentare la protezione in base alla criticità dei dati, indipendentemente dal RF complessivo scelto per l’hardware.
 - **Blocco vs chassis**: “blocco” e “chassis” coincidono; è l’enclosure fisica che ospita uno o più nodi (con PSU/backplane comuni). Un rack è l’armadio che contiene più blocchi; un nodo è il singolo server dentro il blocco. Distribuire repliche su blocchi/rack diversi riduce il rischio di perdere più copie per un guasto di alimentazione/backplane.
+- **Filer: fisico vs software**: un filer fisico è un appliance NAS dedicato (controller + dischi) che espone share NFS/SMB o LUN; non è una SAN né una vSAN, ma un box separato dai server compute. Un filer software è un servizio/file server in VM o container che usa lo storage sottostante (es. container/VG Nutanix) per offrire condivisioni: è software-defined e gira sull’infrastruttura HCI, senza hardware dedicato.
 - **VM applicative vs CVM**: le VM applicative seguono le regole dell’hypervisor (HA, DRS, affinità/anti-affinità) e possono migrare o essere riavviate altrove. La CVM è “pinned” al nodo perché usa l’HBA locale per servire I/O; non migra. Se il nodo è offline, la sua CVM sparisce, ma le altre CVM mantengono il servizio storage e i metadati; quando il nodo torna, la sua CVM riparte e partecipa al rebalance.
 - **Flusso in caso di guasto nodo**: l’hypervisor rileva il failure, spegne forzatamente le VM, Prism/HA le riaccende su host sani con risorse disponibili. La VM riparte, legge prima i dati locali; se alcuni blocchi sono remoti, li legge via rete. Curator/rebalance riportano le repliche mancanti e la località dei dati sul nuovo host, ripristinando il livello RF target in background, senza downtime aggiuntivo.
 - **Cosa rappresenta “B” nello schema**: le lettere (a, b, c, d, e, f, g) indicano blocchi di dati/extent di una VM, non VM o CVM. “B” è un blocco scritto originariamente su un nodo e replicato su altri nodi secondo RF2/RF3. Se il nodo originale è down, la VM riavviata legge “B” in remoto (es. da Node 3) e, se il dato diventa hot, Nutanix lo replica localmente in background sul nuovo nodo. Le write vengono riconosciute solo dopo che tutte le repliche previste da RF sono sicure, anche con un nodo giù.
 - **Scenario Cloudera su Nutanix**: l’HA è stratificata. Nutanix assicura che le VM Cloudera ripartano e che lo storage sia servito; Cloudera assicura che i ruoli applicativi sopravvivano (NameNode/Standby, HDFS a 3 repliche, YARN restart). Esempio: se un nodo Nutanix cade, i DataNode e gli Executor su quel nodo vengono riavviati altrove; HDFS ribilancia/ricrea repliche; gli scheduler YARN ripartono i job. Il risultato è una resilienza combinata infrastruttura + applicazione.
+
+### Schema ASCII: RF e failover di una VM
+```
+Cluster RF2 (3 nodi)
+
+NODO 1 (down)      NODO 2 (VM attiva)      NODO 3
+------------       ------------------      ------------
+VM-X (offline)     VM-X (riavviata)        (repliche)
+Blocchi dati:      Blocchi dati:           Blocchi dati:
+ A (primaria)      A (replica)             B (primaria)
+ B (replica)       B (remoto)              C (replica)
+ C (remoto)        C (remoto)              ...
+
+1) Nodo 1 cade → VM-X viene riavviata su Nodo 2.
+2) VM-X legge localmente ciò che trova (es. A replica). Se un blocco (es. B) è remoto, lo legge da Nodo 3.
+3) Le write sono ack solo quando tutte le copie RF sono persistenti (su Nodo 2 + Nodo 3).
+4) In background curator/rebalance porta le repliche mancanti su nodi sani e ricrea la località (B verrà copiato su Nodo 2 se “hot”).
+5) Nessun nodo contiene “tutte” le copie: ogni blocco ha quante repliche prevede RF e sono distribuite su failure domain diversi.
+```
 
 ---
 ### Cos’è il Fattore di Replica (RF)?
