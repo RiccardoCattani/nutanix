@@ -314,6 +314,7 @@ aumenta resilienza e performance.
 - **Esempio**: con RF2 la perdita contemporanea di due nodi può compromettere i dati presenti solo su quei nodi; con RF3 esiste un’ulteriore copia su un terzo nodo, evitando la perdita.
 - **Requisiti minimi per RF2**: almeno 3 nodi e, per KVM, 24 GB di RAM come base; in scenari con I/O elevato o uso intensivo di SSD/NVMe/Flash, allocare più risorse. Nutanix integra ridondanze hardware (es. doppia alimentazione: se un PSU si guasta l’altro mantiene il servizio).
 - **Scelta RF2 vs RF3**: RF2 è in genere sufficiente in ambienti piccoli/medi; RF3 è preferibile in ambienti molto grandi o quando i dati sono estremamente critici, indipendentemente dalla dimensione del cluster.
+- **Commit sincrono**: ogni write è confermata solo dopo che tutte le copie previste dal RF scelto sono persistenti; RF2 non è “best effort”, è sempre commit su due nodi, RF3 su tre.
 
 In sintesi, la disponibilità deriva dalla combinazione di ridondanza hardware, replica dei dati e failover automatico; la scelta di RF2 o RF3 va tarata su dimensione del cluster, probabilità di guasti simultanei, criticità dei dati e SLA richiesti.
 
@@ -341,6 +342,7 @@ Nutanix gestisce la tolleranza ai guasti e l'alta disponibilità anche attravers
 - **RF2 vs RF3, failure domain**: il failure domain può essere nodo, disco, blocco o rack (se i rack sono differenziati). RF2 garantisce che un failure domain possa cadere senza perdita di dati; RF3 garantisce lo stesso per due failure domain. Distribuire le repliche su rack/blocchi diversi aumenta la resilienza reale. Overhead stimato: RF2 ≈ 50% (1 copia di sicurezza), RF3 ≈ 66% (2 copie di sicurezza) di capacità grezza; va considerato nel sizing e nella crescita.
 - **Upgrade RF2→RF3**: richiede capacità libera sufficiente per creare le copie aggiuntive; durante l’upgrade viene eseguito un rebalance per portare ogni estensione dati a tre copie. Non è reversibile senza ricreare i container/cluster.
 - **Fattore di Replica**: è la policy per container; puoi avere container RF2 e RF3 nello stesso cluster per segmentare la protezione in base alla criticità dei dati, indipendentemente dal RF complessivo scelto per l’hardware.
+- **Blocco vs chassis**: “blocco” e “chassis” coincidono; è l’enclosure fisica che ospita uno o più nodi (con PSU/backplane comuni). Un rack è l’armadio che contiene più blocchi; un nodo è il singolo server dentro il blocco. Distribuire repliche su blocchi/rack diversi riduce il rischio di perdere più copie per un guasto di alimentazione/backplane.
 - **VM applicative vs CVM**: le VM applicative seguono le regole dell’hypervisor (HA, DRS, affinità/anti-affinità) e possono migrare o essere riavviate altrove. La CVM è “pinned” al nodo perché usa l’HBA locale per servire I/O; non migra. Se il nodo è offline, la sua CVM sparisce, ma le altre CVM mantengono il servizio storage e i metadati; quando il nodo torna, la sua CVM riparte e partecipa al rebalance.
 - **Flusso in caso di guasto nodo**: l’hypervisor rileva il failure, spegne forzatamente le VM, Prism/HA le riaccende su host sani con risorse disponibili. La VM riparte, legge prima i dati locali; se alcuni blocchi sono remoti, li legge via rete. Curator/rebalance riportano le repliche mancanti e la località dei dati sul nuovo host, ripristinando il livello RF target in background, senza downtime aggiuntivo.
 - **Cosa rappresenta “B” nello schema**: le lettere (a, b, c, d, e, f, g) indicano blocchi di dati/extent di una VM, non VM o CVM. “B” è un blocco scritto originariamente su un nodo e replicato su altri nodi secondo RF2/RF3. Se il nodo originale è down, la VM riavviata legge “B” in remoto (es. da Node 3) e, se il dato diventa hot, Nutanix lo replica localmente in background sul nuovo nodo. Le write vengono riconosciute solo dopo che tutte le repliche previste da RF sono sicure, anche con un nodo giù.
@@ -361,7 +363,7 @@ Il Fattore di Replica (Replication Factor, RF) è il meccanismo con cui Nutanix 
 - **Tolleranza ai guasti**: Puoi perdere contemporaneamente due nodi (server) e il sistema continua a funzionare senza interruzioni.
 
 ---
-#### Schema semplificato
+#### Schema semplificato (commit sincrono su tutte le copie RF)
 
 | RF | Minimo nodi | Copie totali | Nodi che puoi perdere |
 |----|-------------|--------------|-----------------------|
