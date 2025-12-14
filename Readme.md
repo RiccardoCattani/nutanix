@@ -344,6 +344,8 @@ Nutanix gestisce la tolleranza ai guasti e l'alta disponibilità anche attravers
 - **Fattore di Replica**: è la policy per container; puoi avere container RF2 e RF3 nello stesso cluster per segmentare la protezione in base alla criticità dei dati, indipendentemente dal RF complessivo scelto per l’hardware.
 - **Blocco vs chassis**: “blocco” e “chassis” coincidono; è l’enclosure fisica che ospita uno o più nodi (con PSU/backplane comuni). Un rack è l’armadio che contiene più blocchi; un nodo è il singolo server dentro il blocco. Distribuire repliche su blocchi/rack diversi riduce il rischio di perdere più copie per un guasto di alimentazione/backplane.
 - **Filer: fisico vs software**: un filer fisico è un appliance NAS dedicato (controller + dischi) che espone share NFS/SMB o LUN; non è una SAN né una vSAN, ma un box separato dai server compute. Un filer software è un servizio/file server in VM o container che usa lo storage sottostante (es. container/VG Nutanix) per offrire condivisioni: è software-defined e gira sull’infrastruttura HCI, senza hardware dedicato.
+- **Filer su cluster Nutanix**: non esiste un filer “per host”. Su ogni nodo gira solo la CVM (servizi AOS). Se vuoi file services (es. Nutanix Files), distribuisci un set di FSVM/VM dedicate che formano un cluster di filer sopra il cluster Nutanix: è uno o più file server per cluster/tenant, scalabile orizzontalmente, ma non legato 1:1 ai nodi.
+- **Cluster di filer**: insieme di più VM/FSVM che agiscono come un unico file server distribuito (namespace unico, bilanciamento/HA). Puoi aggiungere o rimuovere nodi filer per scalare capacità e throughput; se un nodo filer cade, gli altri servono le share senza downtime percepito.
 - **Distribuzione delle copie**: nessun nodo contiene “tutte” le repliche. Ogni blocco ha il numero di copie previsto da RF e sono sparse su failure domain diversi; il nodo che esegue la VM tende ad avere una copia locale dei blocchi hot (data locality), mentre le altre restano su nodi differenti per resilienza.
 - **VM applicative vs CVM**: le VM applicative seguono le regole dell’hypervisor (HA, DRS, affinità/anti-affinità) e possono migrare o essere riavviate altrove. La CVM è “pinned” al nodo perché usa l’HBA locale per servire I/O; non migra. Se il nodo è offline, la sua CVM sparisce, ma le altre CVM mantengono il servizio storage e i metadati; quando il nodo torna, la sua CVM riparte e partecipa al rebalance.
 - **Flusso in caso di guasto nodo**: l’hypervisor rileva il failure, spegne forzatamente le VM, Prism/HA le riaccende su host sani con risorse disponibili. La VM riparte, legge prima i dati locali; se alcuni blocchi sono remoti, li legge via rete. Curator/rebalance riportano le repliche mancanti e la località dei dati sul nuovo host, ripristinando il livello RF target in background, senza downtime aggiuntivo.
@@ -391,6 +393,17 @@ Il Fattore di Replica (Replication Factor, RF) è il meccanismo con cui Nutanix 
 |----|-------------|--------------|-----------------------|
 | RF2| 3           | 3            | 1 nodo (o 2 dischi)   |
 | RF3| 5           | 4            | 2 nodi                |
+
+#### RF2 vs RF3: esempi di fault
+- **RF2**: ogni blocco ha 2 copie (originale + replica). Puoi perdere un nodo/blocco/rack; con la perdita contemporanea di due failure domain che ospitano entrambe le copie, il dato è a rischio. Le write sono sempre commit sincrono su due nodi.
+- **RF3**: ogni blocco ha 3 copie (1 originale + 2 repliche). Puoi perdere due failure domain e il dato resta disponibile; la piattaforma ricrea la terza copia su un nodo sano per tornare al livello RF. Le write sono commit sincrono su tre nodi. In pratica: se cadono due nodi, una terza copia su un nodo diverso mantiene vivo il dato e viene creata una nuova replica in background per ristabilire RF3.
+- **Failure domain scelto (nodo / blocco / rack)**: il requisito minimo è 3 domini per RF2 e 5 domini per RF3. Esempi: RF2 a livello nodo → minimo 3 nodi (anche in un solo blocco/rack); RF2 a livello blocco → minimo 3 blocchi (ognuno con almeno un nodo); RF2 a livello rack → minimo 3 rack. Per RF3 servono 5 nodi/blocchi/rack rispettivamente. Le repliche vengono piazzate in domini diversi dal primario per evitare che un singolo guasto li colpisca tutti.
+- **Dimensionamento per failure domain**: scegliere il dominio di fault determina i minimi da rispettare e cosa proteggi:
+  - *Dominio nodo*: RF2 → ≥3 nodi; RF3 → ≥5 nodi (anche in 1 blocco/rack). Protezione da guasti nodo/disco.
+  - *Dominio blocco (chassis)*: RF2 → ≥3 blocchi; RF3 → ≥5 blocchi, ciascuno con ≥1 nodo. Protezione da guasti di backplane/PSU/chassis: le repliche non restano nello stesso blocco.
+  - *Dominio rack*: RF2 → ≥3 rack; RF3 → ≥5 rack, ciascuno con blocchi/nodi. Protezione da perdita di power/cooling/switch ToR: repliche su rack diversi.
+  - Se un dominio cade (nodo/blocco/rack), i dati restano accessibili dagli altri domini; con RF3 puoi perdere due domini contemporaneamente.
+- **Posizionamento repliche per dominio**: la piattaforma rispetta sempre il dominio scelto: con dominio nodo le repliche vanno su nodi diversi (anche nello stesso blocco/rack); con dominio blocco ogni replica finisce su un blocco diverso dal primario; con dominio rack le repliche finiscono su rack diversi. Per RF2 servono 2 copie in domini distinti; per RF3 3 copie in 3 domini distinti, così se cadono uno o due domini i dati restano disponibili.
 
 ---
 #### Esempio pratico
@@ -530,6 +543,10 @@ Oltre all'hardware, il corretto funzionamento del cluster Nutanix dipende da una
 **Requisiti di Rete Fisica:**
 - **Velocità**: Sebbene 1 GbE sia il minimo teorico, per un ambiente di produzione è fortemente raccomandato l'uso di schede di rete e switch a **10 GbE** (o superiore).
 - Questo garantisce che la latenza di rete non diventi un collo di bottiglia per le prestazioni dello storage distribuito.
+- **Switch data center-class**: usare switch non-oversubscribed, line-rate su tutte le porte, bassa latenza (µs/ns), buffer capienti; evitare switch “compressi” da accesso. Per cluster standard usare 10GbE o superiore; 1GbE solo per deployment ROBO/small lab. Non più di 3 switch hop tra due nodi del cluster (ToR/Spine di solito ne usa 1-3); per replica tra rack, assicurarsi che gli uplink reggano il traffico RF2/RF3 senza drop.
+- **Cablaggio host**: ogni nodo va dual-homed su due switch (ToR/leaf) diversi con porte 10/25GbE; la porta IPMI/BMC (100/1000) può stare su uno switch di management separato. Con SFP+/SFP28 usare switch e cavi DAC/ottici coerenti.
+- **Topologia consigliata (Leaf-Spine)**: minimo 2 leaf + 2 spine; ogni leaf uplinka verso tutti gli spine con porte più veloci degli edge per ridurre l’oversubscription. Nessun link leaf-to-leaf o spine-to-spine in L3; mantenere al massimo 3 hop tra nodi. In cluster piccoli single-rack, 2 ToR possono fungere da leaf.
+- **Networking hypervisor (es. AHV/KVM)**: ogni nodo crea uno switch/bridge virtuale (bridge0) che aggrega le NIC fisiche (es. 2×10/25GbE) per uplink verso i ToR. Le VM user (vnet0/vnet1/…) e la CVM (vmnet0) si attaccano a bridge0; il traffico esce dalle NIC bondate verso gli switch fisici. Altri bridge possono essere aggiunti per reti separate, ma di default bridge0 serve sia CVM sia VM.
 
 **Funzionalità Avanzate del Distributed Storage Fabric (DSF):**
 Una volta creato il cluster (minimo 3 nodi), il DSF abilita funzionalità enterprise avanzate sui dati:
