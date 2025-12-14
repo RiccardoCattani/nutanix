@@ -544,9 +544,14 @@ Oltre all'hardware, il corretto funzionamento del cluster Nutanix dipende da una
 - **Velocità**: Sebbene 1 GbE sia il minimo teorico, per un ambiente di produzione è fortemente raccomandato l'uso di schede di rete e switch a **10 GbE** (o superiore).
 - Questo garantisce che la latenza di rete non diventi un collo di bottiglia per le prestazioni dello storage distribuito.
 - **Switch data center-class**: usare switch non-oversubscribed, line-rate su tutte le porte, bassa latenza (µs/ns), buffer capienti; evitare switch “compressi” da accesso. Per cluster standard usare 10GbE o superiore; 1GbE solo per deployment ROBO/small lab. Non più di 3 switch hop tra due nodi del cluster (ToR/Spine di solito ne usa 1-3); per replica tra rack, assicurarsi che gli uplink reggano il traffico RF2/RF3 senza drop.
-- **Cablaggio host**: ogni nodo va dual-homed su due switch (ToR/leaf) diversi con porte 10/25GbE; la porta IPMI/BMC (100/1000) può stare su uno switch di management separato. Con SFP+/SFP28 usare switch e cavi DAC/ottici coerenti.
-- **Topologia consigliata (Leaf-Spine)**: minimo 2 leaf + 2 spine; ogni leaf uplinka verso tutti gli spine con porte più veloci degli edge per ridurre l’oversubscription. Nessun link leaf-to-leaf o spine-to-spine in L3; mantenere al massimo 3 hop tra nodi. In cluster piccoli single-rack, 2 ToR possono fungere da leaf.
-- **Networking hypervisor (es. AHV/KVM)**: ogni nodo crea uno switch/bridge virtuale (bridge0) che aggrega le NIC fisiche (es. 2×10/25GbE) per uplink verso i ToR. Le VM user (vnet0/vnet1/…) e la CVM (vmnet0) si attaccano a bridge0; il traffico esce dalle NIC bondate verso gli switch fisici. Altri bridge possono essere aggiunti per reti separate, ma di default bridge0 serve sia CVM sia VM.
+- **Cablaggio host**: ogni nodo va “dual-homed” su due switch diversi (ToR/leaf) con porte 10/25GbE: una NIC verso Switch A, una verso Switch B, così un guasto link/switch non ferma il nodo. La porta IPMI/BMC (100/1000) può andare su uno switch di management separato. Se usi SFP+/SFP28, serve coerenza fra switch e cavi DAC/ottici.
+- **Topologia consigliata (Leaf-Spine)**: almeno 2 leaf + 2 spine. Ogni leaf uplinka verso tutti gli spine con porte più veloci degli edge per minimizzare l’oversubscription. Non si cablano link leaf↔leaf o spine↔spine in L3; l’obiettivo è massimo 3 switch hop tra due nodi. In cluster piccoli single-rack, 2 ToR possono valere come leaf.
+- **Networking hypervisor (es. AHV/KVM)**: su ogni nodo c’è un bridge virtuale (bridge0) che aggrega le NIC fisiche (es. 2×10/25GbE) e fa uplink verso i ToR. VM utente (vnet0/vnet1/…) e CVM (vmnet0) si collegano a bridge0; il traffico esce sulle NIC in bond verso gli switch. Altri bridge possono isolare reti dedicate, ma di default bridge0 serve sia CVM sia VM.
+- **Glossario rapido**:
+  - Dual-homed: due link per nodo verso switch diversi; se cade un link o uno switch, il nodo resta online.
+  - ToR/Leaf: switch di top-of-rack, livello “foglia” a cui colleghi direttamente i server.
+  - Spine: switch di livello superiore che interconnettono tutte le leaf; tipicamente almeno 2 spine e 2 leaf.
+  - Oversubscription: traffico potenziale degli edge superiore alla banda di uplink; uplink più veloci riducono il collo di bottiglia.
 
 **Funzionalità Avanzate del Distributed Storage Fabric (DSF):**
 Una volta creato il cluster (minimo 3 nodi), il DSF abilita funzionalità enterprise avanzate sui dati:
@@ -562,6 +567,9 @@ Uno dei vantaggi fondamentali dell'architettura Nutanix è la **Data Locality** 
 
 **Come funziona:**
 Quando si crea una macchina virtuale (es. sul **Nodo A**), il sistema intelligente (CVM) fa in modo che i dati di quella VM vengano scritti e salvati preferibilmente nel **disco locale del Nodo A**.
+- **Letture prioritarie locali**: la VM legge prima dal disco locale; se un blocco non è presente localmente, viene letto da un altro nodo via rete, poi riportato localmente in background (rebalance) se diventa “hot”.
+- **Scritture distribuite**: ogni write viene commitata in sincrono su tutte le repliche previste dal RF scelto (es. RF2 su 2 nodi, RF3 su 3 nodi), con una copia locale per la VM e le altre su nodi diversi.
+- **Self-healing**: se un nodo/disco cade, le repliche rimanenti servono i dati; in background viene creata una nuova replica su un nodo sano per tornare al livello RF e, se necessario, ripristinare la località sul nodo che esegue la VM.
 - Nonostante lo storage sia un unico pool distribuito, la CVM "tira" i dati verso l'host dove risiede la VM.
 - **Risultato**: La VM legge e scrive direttamente sull'hardware locale (tramite HBA), ottenendo prestazioni massime e latenza minima, senza dover attraversare la rete.
 
