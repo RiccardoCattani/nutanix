@@ -299,7 +299,69 @@ aumenta resilienza e performance.
 
 📌 10. RESILIENZA E REPLICHE DEI DATI (RF2 / RF3)
 
-Promemoria rapido su RF (dettagli operativi in 6C):
+### Concetti base
+- **Resilienza**: capacità del sistema di continuare a funzionare anche dopo guasti hardware o perdite dell’infrastruttura.
+- **Ridondanza**: duplicazione di componenti o dati per evitare interruzioni del servizio in caso di guasto.
+- **Fattore di Ridondanza (RF)**: misura quanti componenti hardware possono guastarsi senza interrompere il cluster; Nutanix supporta RF2 (default) e RF3. Passaggio consentito da RF2 a RF3, non viceversa: va deciso in fase di design.
+- **Cosa protegge il RF**: guasti di nodi, dischi, blocchi o rack; il servizio resta disponibile grazie alle copie presenti su altri nodi.
+- **Meccanismi di failover**: rilevamento dei guasti automatico, con spostamento immediato del carico su componenti ridondanti; la tolleranza può essere ragionata per nodo, blocco o rack.
+- **Fattore di Replica dei dati**: opera a livello di container/dati e stabilisce quante copie logiche vengono mantenute (due o tre). È orientato alla protezione del dato, mentre il fattore di ridondanza è centrato sulla tolleranza ai guasti hardware.
+
+### Fattore di Ridondanza (RF2 / RF3)
+- **RF2 (Redundancy Factor 2)**: supporta il guasto di un singolo componente hardware (nodo, disco, alimentatore). Predefinito Nutanix, richiede almeno 3 nodi; consigliato per cluster piccoli/medi (es. 5–10 nodi) dove la probabilità di guasti multipli simultanei è bassa.
+- **RF3 (Redundancy Factor 3)**: supporta il guasto simultaneo di due failure domain (nodi/dischi/blocchi/rack, in base a come distribuisci le repliche); indicato per ambienti grandi (centinaia/migliaia di nodi) o per dati estremamente critici anche in cluster piccoli. Offre più protezione ma consuma più risorse. Per tollerare più di due failure domain servono architetture diverse (es. replica sincrona/Metro tra cluster o soluzioni multi-site).
+- **Nota**: è possibile salire da RF2 a RF3, non tornare indietro.
+- **Esempio**: con RF2 la perdita contemporanea di due nodi può compromettere i dati presenti solo su quei nodi; con RF3 esiste un’ulteriore copia su un terzo nodo, evitando la perdita.
+- **Requisiti minimi per RF2**: almeno 3 nodi e, per KVM, 24 GB di RAM come base; in scenari con I/O elevato o uso intensivo di SSD/NVMe/Flash, allocare più risorse. Nutanix integra ridondanze hardware (es. doppia alimentazione: se un PSU si guasta l’altro mantiene il servizio).
+- **Scelta RF2 vs RF3**: RF2 è in genere sufficiente in ambienti piccoli/medi; RF3 è preferibile in ambienti molto grandi o quando i dati sono estremamente critici, indipendentemente dalla dimensione del cluster.
+
+In sintesi, la disponibilità deriva dalla combinazione di ridondanza hardware, replica dei dati e failover automatico; la scelta di RF2 o RF3 va tarata su dimensione del cluster, probabilità di guasti simultanei, criticità dei dati e SLA richiesti.
+
+### Esempio di failover hardware e data locality
+- Se un nodo esce di servizio (CPU, RAM, rete o alimentazione), le VM vengono migrate/riallineate automaticamente su altri nodi che hanno capacità CPU/RAM/storage disponibile.
+- La VM sul nuovo nodo legge/scrive prima sui dati locali; le repliche mancanti vengono recuperate in remoto e la piattaforma ricostruisce le copie (self-healing) in background, riportando la località dei dati sul nodo che ospita la VM.
+- Le repliche vengono riallocate sui nodi meno caricati per ristabilire il livello di protezione RF scelto, senza interrompere i workload.
+
+📌 10B. NUTANIX – RESILIENZA, RF E VM APPLICATIVE (SCENARIO CLOUDERA)
+
+- **Resilienza & Ridondanza**: la piattaforma continua a funzionare nonostante guasti hardware; la ridondanza (RF2/RF3) duplica componenti/dati e il failover automatico sposta carichi e I/O su componenti sani.
+- **RF2 vs RF3**: RF2 (min 3 nodi) tollera un failure domain; RF3 (min 5 nodi) ne tollera due. Si può salire da RF2 a RF3, non scendere. In cluster piccoli/medi RF2 è tipico; RF3 per cluster grandi o dati mission-critical.
+- **Fattore di Replica**: a livello container/dati stabilisce quante copie (2 o 3); si occupa del dato, mentre il fattore di ridondanza è orientato all’hardware.
+- **VM applicative vs CVM**: le VM utente (es. Rocky/Ubuntu/Windows, database/web/app) possono essere migrate/riavviate su altri nodi; la CVM è legata al nodo e non migra, ma le altre CVM mantengono i servizi storage.
+- **Guasto nodo**: il nodo diventa indisponibile; le VM applicative vengono riavviate su altri nodi in base a CPU/RAM/storage; la data locality privilegia l’accesso locale, con recupero remoto e replica locale in background.
+- **Scenario Nutanix + Cloudera**:
+  - Nutanix: hypervisor (AHV/KVM), storage distribuito AOS, HA VM, replica RF2/RF3.
+  - Cloudera: VM di management (Cloudera Manager, NameNode/Standby, ResourceManager, ZooKeeper), worker (DataNode, NodeManager, Spark Executor, HBase RegionServer), servizio (Edge/Gateway, Hive, Impala, Kafka, NiFi).
+  - In caso di guasto fisico: le VM Cloudera si riavviano su altri nodi; le CVM restanti servono lo storage; Cloudera gestisce HA applicativa (NameNode HA, replica HDFS, riavvio job). Doppia resilienza: Nutanix per infrastruttura, Cloudera per dati/servizi Big Data.
+
+Nutanix gestisce la tolleranza ai guasti e l'alta disponibilità anche attraverso il concetto di Fattore di Replica (Replication Factor - RF) a livello dati. Questo garantisce che i blocchi siano sempre disponibili, anche in caso di guasti a dischi o nodi interi.
+
+### Approfondimenti rapidi
+- **Resilienza & Ridondanza**: la continuità è ottenuta sommandone tre: (1) copie dei dati distribuite (RF), (2) servizi di controllo ridondanti (CVM su ogni nodo), (3) orchestrazione di failover automatica. In pratica, se una replica o un servizio cade, un altro prende il posto senza interventi manuali.
+- **RF2 vs RF3, failure domain**: il failure domain può essere nodo, disco, blocco o rack (se i rack sono differenziati). RF2 garantisce che un failure domain possa cadere senza perdita di dati; RF3 garantisce lo stesso per due failure domain. Distribuire le repliche su rack/blocchi diversi aumenta la resilienza reale. Overhead stimato: RF2 ≈ 50% (1 copia di sicurezza), RF3 ≈ 66% (2 copie di sicurezza) di capacità grezza; va considerato nel sizing e nella crescita.
+- **Upgrade RF2→RF3**: richiede capacità libera sufficiente per creare le copie aggiuntive; durante l’upgrade viene eseguito un rebalance per portare ogni estensione dati a tre copie. Non è reversibile senza ricreare i container/cluster.
+- **Fattore di Replica**: è la policy per container; puoi avere container RF2 e RF3 nello stesso cluster per segmentare la protezione in base alla criticità dei dati, indipendentemente dal RF complessivo scelto per l’hardware.
+- **VM applicative vs CVM**: le VM applicative seguono le regole dell’hypervisor (HA, DRS, affinità/anti-affinità) e possono migrare o essere riavviate altrove. La CVM è “pinned” al nodo perché usa l’HBA locale per servire I/O; non migra. Se il nodo è offline, la sua CVM sparisce, ma le altre CVM mantengono il servizio storage e i metadati; quando il nodo torna, la sua CVM riparte e partecipa al rebalance.
+- **Flusso in caso di guasto nodo**: l’hypervisor rileva il failure, spegne forzatamente le VM, Prism/HA le riaccende su host sani con risorse disponibili. La VM riparte, legge prima i dati locali; se alcuni blocchi sono remoti, li legge via rete. Curator/rebalance riportano le repliche mancanti e la località dei dati sul nuovo host, ripristinando il livello RF target in background, senza downtime aggiuntivo.
+- **Cosa rappresenta “B” nello schema**: le lettere (a, b, c, d, e, f, g) indicano blocchi di dati/extent di una VM, non VM o CVM. “B” è un blocco scritto originariamente su un nodo e replicato su altri nodi secondo RF2/RF3. Se il nodo originale è down, la VM riavviata legge “B” in remoto (es. da Node 3) e, se il dato diventa hot, Nutanix lo replica localmente in background sul nuovo nodo. Le write vengono riconosciute solo dopo che tutte le repliche previste da RF sono sicure, anche con un nodo giù.
+- **Scenario Cloudera su Nutanix**: l’HA è stratificata. Nutanix assicura che le VM Cloudera ripartano e che lo storage sia servito; Cloudera assicura che i ruoli applicativi sopravvivano (NameNode/Standby, HDFS a 3 repliche, YARN restart). Esempio: se un nodo Nutanix cade, i DataNode e gli Executor su quel nodo vengono riavviati altrove; HDFS ribilancia/ricrea repliche; gli scheduler YARN ripartono i job. Il risultato è una resilienza combinata infrastruttura + applicazione.
+
+---
+### Cos’è il Fattore di Replica (RF)?
+Il Fattore di Replica (Replication Factor, RF) è il meccanismo con cui Nutanix garantisce che i dati siano sempre disponibili, anche in caso di guasti hardware (dischi o nodi). In pratica, ogni blocco di dati viene copiato più volte su nodi diversi del cluster.
+
+#### RF2 (Replication Factor 2)
+- **Minimo 3 nodi**: Serve almeno un cluster di 3 server fisici.
+- **Come funziona**: Ogni blocco di dati viene scritto sull’host principale e replicato su altri 2 nodi (totale 3 copie: 1 originale + 2 repliche). Per host principale si intende il nodo dove risiede la VM che sta scrivendo i dati.
+- **Tolleranza ai guasti**: Puoi perdere un intero nodo (server) oppure due dischi, e il sistema continua a funzionare senza perdere dati o interrompere i servizi.
+
+#### RF3 (Replication Factor 3)
+- **Minimo 5 nodi**: Serve almeno un cluster di 5 server fisici.
+- **Come funziona**: Ogni blocco di dati viene scritto sull’host principale e replicato su altri 3 nodi (totale 4 copie: 1 originale + 3 repliche).
+- **Tolleranza ai guasti**: Puoi perdere contemporaneamente due nodi (server) e il sistema continua a funzionare senza interruzioni.
+
+---
+#### Schema semplificato
 
 | RF | Minimo nodi | Copie totali | Nodi che puoi perdere |
 |----|-------------|--------------|-----------------------|
@@ -312,17 +374,19 @@ Supponiamo di avere un cluster Nutanix con 5 nodi e RF3:
 - Scrivi un file: viene salvato sul nodo A e replicato su B, C e D.
 - Se il nodo A e il nodo B si guastano, il file è ancora disponibile su C e D.
 
-#### Esempio RF2 con 3 nodi (letture remote)
-- Crei una VM sul nodo 1: i dati primari sono locali (data locality) e vengono replicati sui nodi 2 e 3.
-- Se la CVM/hypervisor del nodo 1 non puo usare lo storage locale (servizio KVM/CVM fermo), la VM continua a girare sul nodo 1 ma legge i blocchi dalle copie remote su nodo 2 e 3.
-- Il cluster privilegia mantenere il compute sul nodo 1 (CPU/RAM ancora sane) evitando di migrare la VM, e usa la rete solo per l'I/O finche la CVM torna disponibile.
-- Quando il nodo o la CVM tornano operativi, il sistema ripristina la locality e ricostruisce eventuali repliche mancanti.
+---
+### Come avviene la replica?
+- La replica è gestita dal software Nutanix (tramite la CVM, Controller Virtual Machine).
+- Le copie dei dati sono distribuite in modo intelligente su nodi diversi, evitando che un singolo guasto possa causare la perdita di dati.
+- Non c’è un controller centrale  come nelle SAN tradizionali: la resilienza è “distribuita” e non esiste un singolo punto di fallimento.
 
-#### Scritture remote quando lo storage locale non è disponibile
-- Se il percorso storage locale non è raggiungibile, le nuove scritture vengono indirizzate a CVM di altri nodi; ogni blocco è checksummed e subito replicato per rispettare l’RF del container.
-- Il posizionamento tiene conto di bilanciamento capacità/IOPS: i dati “caldi” hanno priorità; i dati “freddi” possono essere ricostruiti quando il cluster è meno carico.
-- Al rientro della CVM/nodo, le repliche restano fonte autorevole e la piattaforma riallinea le copie ripristinando la data locality.
+---
+### In sintesi
+- **RF2**: Protegge da guasti singoli (nodo o disco).
+- **RF3**: Protegge da guasti multipli (fino a due nodi).
+- **Vantaggio**: I dati sono sempre disponibili e il cluster continua a funzionare anche in caso di guasti hardware, grazie alla replica distribuita.
 
+---
 ### Scelta del Fattore di Ridondanza (RF2 vs RF3)
 
 - **RF2 (min 3 nodi)**: impostazione di default; tollera la perdita di 1 nodo o disco. Consigliato per cluster piccoli/medi o carichi meno critici.
